@@ -3,8 +3,7 @@ import { Mail, Lock, UserPlus, User, ArrowRight, Shield } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { auth } from '../../lib/auth';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+import { supabase } from '../../lib/supabase';
 
 const Register = () => {
   const [role, setRole] = useState('patient');
@@ -12,6 +11,7 @@ const Register = () => {
     name: '',
     email: '',
     password: '',
+    phone: '',
     specialization: '',
     department: '',
   });
@@ -25,25 +25,57 @@ const Register = () => {
     setError('');
 
     try {
-      const response = await fetch(`${API_URL}/api/auth/register`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+      const { name, email, password, phone, specialization, department } = formData;
+
+      // 1. Sign up via Supabase Auth directly (no Express backend needed)
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { name, role },
         },
-        body: JSON.stringify({ ...formData, role }),
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Registration failed');
+      if (authError) {
+        throw new Error(authError.message || 'Registration failed');
       }
 
-      auth.setToken(data.token);
-      auth.setUser(data.user);
+      const supabaseUser = authData.user;
+      if (!supabaseUser) {
+        throw new Error('Registration failed. Please try again.');
+      }
 
-      // Redirect based on role
-      if (data.user.role === 'doctor') {
+      // 2. Insert into public.users table
+      const { data: userRow, error: userError } = await supabase
+        .from('users')
+        .upsert({ id: supabaseUser.id, name, email, phone: phone || null, role })
+        .select()
+        .single();
+
+      if (userError) {
+        console.warn('users table insert error:', userError.message);
+      }
+
+      // 3. Create role-specific profile
+      if (role === 'doctor') {
+        await supabase.from('doctors').upsert({
+          user_id: supabaseUser.id,
+          specialization: specialization || 'General',
+          department: department || 'General',
+          is_verified: false,
+        });
+      } else if (role === 'patient') {
+        await supabase.from('patients').upsert({
+          user_id: supabaseUser.id,
+        });
+      }
+
+      // 4. Store auth and redirect
+      const user = userRow || { id: supabaseUser.id, name, email, role };
+      auth.setToken(authData.session?.access_token || '');
+      auth.setUser(user);
+
+      if (role === 'doctor') {
         navigate('/doctor/dashboard');
       } else {
         navigate('/patient/home');
@@ -134,6 +166,7 @@ const Register = () => {
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                     required
+                    minLength={6}
                   />
                 </div>
               </div>
@@ -195,4 +228,3 @@ const Register = () => {
 };
 
 export default Register;
-

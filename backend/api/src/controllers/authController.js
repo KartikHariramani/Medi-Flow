@@ -13,30 +13,53 @@ export const register = async (req, res) => {
       return res.status(400).json({ error: 'name, email, password, and role are required.' });
     }
 
-    // 1. Create user in Supabase Auth (using Admin API to bypass rate limits & confirmation)
-    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-      user_metadata: { name, role }
-    });
-    
-    if (authError) {
-      // If user already exists in Auth, try to find them
-      if (authError.message.includes('already registered')) {
-        const { data: list } = await supabase.auth.admin.listUsers();
-        const existing = list.users.find(u => u.email === email);
-        if (existing) {
-          authData.user = existing;
+    // 1. Create user in Supabase Auth (using Admin API with fallback to standard signUp)
+    let supabaseUserId;
+    try {
+      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true,
+        user_metadata: { name, role }
+      });
+      
+      if (authError) {
+        if (authError.message.includes('already registered')) {
+          const { data: list } = await supabase.auth.admin.listUsers();
+          const existing = list?.users?.find(u => u.email === email);
+          if (existing) {
+            supabaseUserId = existing.id;
+          } else {
+            throw authError;
+          }
         } else {
           throw authError;
         }
       } else {
-        throw authError;
+        supabaseUserId = authData?.user?.id;
+      }
+    } catch (adminErr) {
+      console.warn('⚠️ Admin registration failed, trying standard signUp:', adminErr.message);
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { name, role }
+        }
+      });
+      
+      if (signUpError) {
+        if (signUpError.message.includes('already registered') || signUpError.message.includes('already exists')) {
+          const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+          if (signInError) throw new Error('User already registered. Please sign in.');
+          supabaseUserId = signInData?.user?.id;
+        } else {
+          throw signUpError;
+        }
+      } else {
+        supabaseUserId = signUpData?.user?.id;
       }
     }
-
-    const supabaseUserId = authData.user?.id;
 
     // 2. Insert into public.users table
     const { data: user, error: userError } = await supabase
