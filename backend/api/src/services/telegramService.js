@@ -207,4 +207,79 @@ export const sendAppointmentReminderTelegram = async (
     return result;
 };
 
+/**
+ * Send Queue Status Update.
+ */
+export const sendQueueStatusUpdateTelegram = async (
+    patientName,
+    doctorName,
+    newPosition,
+    newWaitTime
+) => {
+    console.log(`🔢 Sending position status update to ${patientName}...`);
+    const message =
+        `🔄 <b>Queue Status Update</b>\n\n` +
+        `👤 Patient: <b>${patientName}</b>\n` +
+        `👨‍⚕️ Doctor: <b>Dr. ${doctorName.replace(/^Dr\.?\s*/i, '')}</b>\n` +
+        `🔢 New Queue Position: <b>#${newPosition}</b>\n` +
+        `⏳ Updated Wait Time: <b>${newWaitTime} mins</b>\n\n` +
+        `ℹ️ The live queue has advanced. View live token updates in your MediFlow dashboard.`;
 
+    const result = await sendTelegramMessage(message);
+    if (result.success) {
+        console.log(`✅ Telegram queue update sent for ${patientName}`);
+    } else {
+        console.log('⚠️ Telegram queue update failed:', result.error);
+    }
+    return result;
+};
+
+/**
+ * Send Turn Alert (Next in line).
+ */
+export const sendTurnAlertTelegram = async (
+    patientName,
+    doctorName,
+    position
+) => {
+    console.log(`🔔 Sending turn alert to ${patientName}...`);
+    const message =
+        `🚨 <b>Turn Alert: You are Next!</b>\n\n` +
+        `👤 Patient: <b>${patientName}</b>\n` +
+        `👨‍⚕️ Doctor: <b>Dr. ${doctorName.replace(/^Dr\.?\s*/i, '')}</b>\n` +
+        `🔢 Current Queue Position: <b>#${position}</b>\n\n` +
+        `📢 Please move towards Dr. ${doctorName.replace(/^Dr\.?\s*/i, '')}'s consulting room immediately. The doctor is ready to see you shortly.`;
+
+    const result = await sendTelegramMessage(message);
+    if (result.success) {
+        console.log(`✅ Telegram turn alert sent for ${patientName}`);
+    } else {
+        console.log('⚠️ Telegram turn alert failed:', result.error);
+    }
+    return result;
+};
+
+/**
+ * Send Follow-Up Consultation Reminder.
+ */
+export const sendFollowUpNotificationTelegram = async (
+    patientName,
+    doctorName,
+    specialization
+) => {
+    console.log(`✉️ Sending follow-up request to ${patientName}...`);
+    const message =
+        `🏥 <b>Follow-Up Consultation Note</b>\n\n` +
+        `Dear <b>${patientName}</b>,\n` +
+        `We hope you are recovering well from your recent visit with <b>Dr. ${doctorName.replace(/^Dr\.?\s*/i, '')}</b> (${specialization}).\n\n` +
+        `📅 Would you like to schedule a quick progress review or follow-up check?\n` +
+        `🔗 You can log in to your MediFlow portal to select an available scheduling slot.`;
+
+    const result = await sendTelegramMessage(message);
+    if (result.success) {
+        console.log(`✅ Telegram follow-up alert sent for ${patientName}`);
+    } else {
+        console.log('⚠️ Telegram follow-up alert failed:', result.error);
+    }
+    return result;
+};

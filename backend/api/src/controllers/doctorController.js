@@ -90,6 +90,42 @@ export const completeConsultation = async (req, res) => {
           .update({ position: i + 1, updated_at: new Date().toISOString() })
           .eq('id', remaining[i].id);
       }
+      
+      // Send dynamic Queue Status & Turn Alert Telegram notifications
+      (async () => {
+         try {
+           const { sendQueueStatusUpdateTelegram, sendTurnAlertTelegram } = await import('../services/telegramService.js');
+           for (let i = 0; i < remaining.length; i++) {
+             const newPos = i + 1;
+             const { data: queueEntry } = await supabase
+               .from('queue')
+               .select(`
+                  position,
+                  appointments (
+                     estimated_wait_time,
+                     patients ( users (name) ),
+                     doctors ( users (name) )
+                  )
+               `)
+               .eq('id', remaining[i].id)
+               .single();
+
+             if (queueEntry && queueEntry.appointments) {
+               const patientName = queueEntry.appointments.patients?.users?.name || 'Patient';
+               const doctorName = queueEntry.appointments.doctors?.users?.name || 'Doctor';
+               const waitTime = newPos * 15;
+               
+               if (newPos === 1) {
+                 await sendTurnAlertTelegram(patientName, doctorName, newPos);
+               } else {
+                 await sendQueueStatusUpdateTelegram(patientName, doctorName, newPos, waitTime);
+               }
+             }
+           }
+         } catch (e) {
+           console.error('Queue advance Telegram notify error:', e.message);
+         }
+      })();
     }
 
     // 5. Save to medical history and trigger telegram
